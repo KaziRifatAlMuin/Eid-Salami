@@ -1,6 +1,6 @@
 :root{
-  --bg0:#071a1a;
-  --bg1:#0a2a2a;
+  --bg0:#0a0720;
+  --bg1:#120b36;
   --ink:#e8fff7;
   --muted:rgba(232,255,247,.75);
   --soft:rgba(232,255,247,.12);
@@ -19,9 +19,11 @@ body{
   margin:0;
   font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,"Noto Sans","Helvetica Neue",sans-serif;
   color:var(--ink);
-  background:radial-gradient(1200px 900px at 10% 20%, rgba(38,243,210,.18), transparent 60%),
-             radial-gradient(900px 700px at 90% 10%, rgba(246,215,127,.16), transparent 55%),
-             linear-gradient(180deg, var(--bg0), var(--bg1));
+  background:
+    radial-gradient(1200px 900px at 12% 18%, rgba(83,61,255,.18), transparent 62%),
+    radial-gradient(900px 700px at 92% 10%, rgba(140,70,255,.16), transparent 58%),
+    radial-gradient(900px 700px at 80% 72%, rgba(38,243,210,.10), transparent 60%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
   overflow-x:hidden;
 }
 
@@ -94,8 +96,15 @@ body{
   margin:14px auto 36px;
   padding:0 18px;
   display:grid;
-  grid-template-columns: 1.4fr .9fr;
+  grid-template-columns: 1fr;
   gap:16px;
+  min-height: calc(100vh - 120px);
+}
+
+.wheel-panel{
+  min-height: calc(100vh - 140px);
+  display:flex;
+  flex-direction:column;
 }
 
 .panel{
@@ -125,10 +134,11 @@ body{
   display:grid;
   place-items:center;
   position:relative;
+  flex:1;
 }
 
 #wheel{
-  width:min(520px, 86vw);
+  width:min(680px, 92vw, 74vh);
   height:auto;
   border-radius:999px;
   box-shadow:
@@ -140,7 +150,7 @@ body{
 
 .ring{
   position:absolute;
-  width:min(520px, 86vw);
+  width:min(680px, 92vw, 74vh);
   aspect-ratio:1/1;
   border-radius:999px;
   box-shadow:
@@ -195,6 +205,15 @@ body{
   filter:saturate(.8);
 }
 
+.btn.btn-secondary{
+  background:rgba(232,255,247,.10);
+  color:var(--ink);
+  border:1px solid rgba(232,255,247,.18);
+  box-shadow: 0 18px 90px rgba(0,0,0,.35);
+}
+
+.btn.btn-secondary .btn-glow{display:none}
+
 .btn .btn-glow{
   position:absolute;
   inset:-2px;
@@ -235,7 +254,7 @@ body{
 }
 .result-sub{color:var(--muted); margin-top:6px; font-size:13px}
 
-.side{padding:18px}
+.side{display:none}
 .dua-title{margin:0 0 8px; font-size:18px}
 .dua-text{margin:0 0 14px; color:var(--muted); line-height:1.6}
 .smallprint{margin-top:12px; color:rgba(232,255,247,.6); font-size:12px}
@@ -325,6 +344,95 @@ body{
   mask: radial-gradient(120px 65px at 60px 0px, #0000 64px, #000 65px) 0 0/120px 60px;
   -webkit-mask: radial-gradient(120px 65px at 60px 0px, #0000 64px, #000 65px) 0 0/120px 60px;
   opacity:.95;
+}
+
+.modal{
+  position:fixed;
+  inset:0;
+  z-index:50;
+  display:grid;
+  place-items:center;
+}
+
+.modal[hidden]{display:none}
+
+.modal-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(0,0,0,.58);
+  backdrop-filter: blur(12px);
+}
+
+.modal-card{
+  position:relative;
+  width:min(520px, 92vw);
+  border-radius:22px;
+  padding:18px 18px 16px;
+  background:linear-gradient(180deg, rgba(232,255,247,.10), rgba(232,255,247,.05));
+  border:1px solid rgba(232,255,247,.18);
+  box-shadow: 0 30px 160px rgba(0,0,0,.6);
+  overflow:hidden;
+}
+
+.modal-card::before{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  background:
+    radial-gradient(520px 220px at 20% 0%, rgba(246,215,127,.22), transparent 60%),
+    radial-gradient(480px 220px at 90% 0%, rgba(38,243,210,.20), transparent 55%);
+  opacity:1;
+  pointer-events:none;
+}
+
+.modal-card > *{position:relative}
+
+.modal-close{
+  position:absolute;
+  top:12px;
+  right:12px;
+  width:44px;
+  height:44px;
+  border-radius:999px;
+  display:inline-grid;
+  place-items:center;
+  background:rgba(6,20,19,0.08);
+  color:var(--ink);
+  font-size:22px;
+  line-height:1;
+  border:1px solid rgba(232,255,247,0.08);
+  box-shadow:0 8px 30px rgba(0,0,0,0.45);
+}
+.modal-close:focus{outline:2px solid rgba(246,215,127,0.6)}
+
+.modal-badge{
+  display:inline-block;
+  padding:8px 10px;
+  border-radius:999px;
+  font-size:12px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:rgba(6,20,19,.95);
+  background:linear-gradient(180deg, var(--gold2), var(--gold));
+}
+
+.modal-title{margin:12px 0 8px; font-size:22px}
+
+.modal-amount{
+  font-size:44px;
+  font-weight:1000;
+  letter-spacing:.02em;
+  margin:2px 0 6px;
+  text-shadow:0 22px 90px rgba(246,215,127,.25);
+}
+
+.modal-text{margin:0 0 12px; color:var(--muted); line-height:1.6}
+
+.modal-actions{
+  display:flex;
+  gap:10px;
+  justify-content:flex-end;
+  flex-wrap:wrap;
 }
 
 @media (max-width: 980px){

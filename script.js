@@ -6,8 +6,23 @@
   const resultEl = document.getElementById('result');
   const resultValueEl = resultEl.querySelector('.result-value');
   const festoonEl = document.getElementById('festoon');
+  const modalEl = document.getElementById('modal');
+  const modalAmountEl = document.getElementById('modalAmount');
+  const closeModalBtn = document.getElementById('closeModal');
+  const spinAgainBtn = document.getElementById('spinAgain');
 
-  if (!wheelCanvas || !fxCanvas || !spinBtn || !statusEl || !resultEl || !resultValueEl || !festoonEl) {
+  if (
+    !wheelCanvas ||
+    !fxCanvas ||
+    !spinBtn ||
+    !statusEl ||
+    !resultEl ||
+    !resultValueEl ||
+    !festoonEl ||
+    !modalEl ||
+    !modalAmountEl ||
+    !closeModalBtn
+  ) {
     return;
   }
 
@@ -15,24 +30,72 @@
   const fxCtx = fxCanvas.getContext('2d');
   if (!wheelCtx || !fxCtx) return;
 
-  // Values: 10..100 (inclusive) step 10
-  const values = Array.from({ length: 10 }, (_, i) => (i + 1) * 10);
+  // Values (same set, intentionally NOT in sorted order for the wheel layout)
+  const values = [35, 12, 80, 23, 50, 10, 90, 15, 70, 26, 100, 20, 60, 45, 30, 40];
 
-  // Log-weighted toward higher values.
-  // weight(v) = ln(v + 1) - gives gently increasing weight.
-  function pickLogWeighted(valuesList) {
-    const weights = valuesList.map((v) => Math.log(v + 1));
+  // Target cumulative probabilities (CDF):
+  // P(value <= 20) = 50%
+  // P(value <= 30) = 90%
+  // P(value <= 40) = 99%
+  // P(value <= 50) = 99.9%
+  // ...continuing with extra 9s for later ranges.
+  const cdfTargets = [
+    { max: 20, p: 0.5 },
+    { max: 30, p: 0.9 },
+    { max: 40, p: 0.99 },
+    { max: 50, p: 0.999 },
+    { max: 60, p: 0.9999 },
+    { max: 70, p: 0.99999 },
+    { max: 80, p: 0.999999 },
+    { max: 90, p: 0.9999999 },
+    { max: 100, p: 1 },
+  ];
+
+  function buildWeightsFromCdf(valuesList, cdfPoints) {
+    const weights = new Array(valuesList.length).fill(0);
+    let prevP = 0;
+    let prevMax = -Infinity;
+
+    for (const point of cdfPoints) {
+      const bucketProb = Math.max(0, Math.min(1, point.p) - prevP);
+      const bucketIdx = [];
+      for (let i = 0; i < valuesList.length; i++) {
+        const v = valuesList[i];
+        if (v > prevMax && v <= point.max) bucketIdx.push(i);
+      }
+
+      if (bucketIdx.length > 0 && bucketProb > 0) {
+        const each = bucketProb / bucketIdx.length;
+        for (const i of bucketIdx) weights[i] += each;
+      }
+
+      prevP = Math.max(prevP, Math.min(1, point.p));
+      prevMax = point.max;
+    }
+
+    // Normalize (floating-point safety)
     const total = weights.reduce((a, b) => a + b, 0);
+    if (total <= 0) {
+      // Fallback to uniform if misconfigured.
+      return weights.map(() => 1 / weights.length);
+    }
+    return weights.map((w) => w / total);
+  }
+
+  const weights = buildWeightsFromCdf(values, cdfTargets);
+
+  function pickWeighted(valuesList, weightsList) {
+    const total = weightsList.reduce((a, b) => a + b, 0);
     let r = Math.random() * total;
-    for (let i = 0; i < weights.length; i++) {
-      r -= weights[i];
+    for (let i = 0; i < weightsList.length; i++) {
+      r -= weightsList[i];
       if (r <= 0) return { index: i, value: valuesList[i] };
     }
     return { index: valuesList.length - 1, value: valuesList[valuesList.length - 1] };
   }
 
   const colors = {
-    bg: '#071a1a',
+    bg: '#0a0720',
     ink: 'rgba(232,255,247,.95)',
     muted: 'rgba(232,255,247,.65)',
     gold: '#f6d77f',
@@ -45,9 +108,9 @@
     spinning: false,
     targetRotation: 0,
     startRotation: 0,
+    selectedIndex: 0,
     startTime: 0,
     duration: 0,
-    selectedIndex: 0,
   };
 
   function resizeFx() {
@@ -96,6 +159,8 @@
     const segmentCount = values.length;
     const arc = (Math.PI * 2) / segmentCount;
 
+    const labelFontSize = segmentCount > 12 ? 14 : 18;
+
     for (let i = 0; i < segmentCount; i++) {
       const start = i * arc;
       const end = start + arc;
@@ -128,7 +193,7 @@
       wheelCtx.translate(r * 0.70, 0);
       wheelCtx.rotate(Math.PI / 2);
       wheelCtx.fillStyle = colors.ink;
-      wheelCtx.font = '800 18px ui-sans-serif, system-ui, Segoe UI, Arial';
+      wheelCtx.font = `800 ${labelFontSize}px ui-sans-serif, system-ui, Segoe UI, Arial`;
       wheelCtx.textAlign = 'center';
       wheelCtx.textBaseline = 'middle';
       wheelCtx.fillText(`৳${values[i]}`, 0, 0);
@@ -196,34 +261,47 @@
     ctx.fill();
   }
 
-  function easeOutCubic(t) {
-    return 1 - Math.pow(1 - t, 3);
+  function showModal(amount) {
+    modalAmountEl.textContent = `৳${amount}`;
+    modalEl.hidden = false;
+    // Focus for accessibility
+    closeModalBtn.focus({ preventScroll: true });
   }
 
-  function normalizeAngle(a) {
-    const two = Math.PI * 2;
-    return ((a % two) + two) % two;
+  function hideModal() {
+    modalEl.hidden = true;
   }
 
   function rotationToLandOnIndex(index) {
-    // Pointer is at top (angle -90deg), canvas rotation is clockwise.
-    // For segment i centered at angle mid, we want mid + rotation = -PI/2.
+    // Calculate the exact rotation so segment `index` center aligns with the pointer (top).
+    // The pointer is at angle -π/2 (top). We want the center of segment `index` to align there.
+    
     const segmentCount = values.length;
     const arc = (Math.PI * 2) / segmentCount;
-    const mid = index * arc + arc / 2;
-    const desired = -Math.PI / 2;
-
-    // Compute minimal rotation that aligns, then add multiple full spins for drama.
-    const current = normalizeAngle(wheel.rotation);
-    const base = normalizeAngle(desired - mid);
-
-    // choose a target that's ahead of current by adding k*2π.
-    const spins = 7 + Math.floor(Math.random() * 4); // 7-10 full spins
-    const ahead = base + spins * Math.PI * 2;
-
-    // ensure monotonic increase from current
-    const delta = ahead - current;
-    return wheel.rotation + delta;
+    const segmentCenterAngle = index * arc + arc / 2;
+    const pointerAngle = -Math.PI / 2; // Pointer at top
+    
+    // Base rotation needed to align the segment with the pointer.
+    let targetRotation = pointerAngle - segmentCenterAngle;
+    
+    // Normalize to [0, 2π) range.
+    while (targetRotation < 0) {
+      targetRotation += Math.PI * 2;
+    }
+    
+    // Ensure the target is always AHEAD of the current rotation (no backwards spin).
+    while (targetRotation <= wheel.rotation) {
+      targetRotation += Math.PI * 2;
+    }
+    
+    // Add 6–9 full spins for visual drama.
+    const spinCount = 6 + Math.floor(Math.random() * 4);
+    targetRotation += spinCount * Math.PI * 2;
+    
+    // Add small jitter within the segment for natural feel.
+    const jitter = (Math.random() - 0.5) * arc * 0.3;
+    
+    return targetRotation + jitter;
   }
 
   function setStatus(text) {
@@ -236,6 +314,99 @@
 
   function lockUI(locked) {
     spinBtn.disabled = locked;
+  }
+
+  function playEidMusic(durationMs = 6500) {
+    // If the user provides an `eid.mp3` in the same folder, prefer that.
+    // Otherwise fall back to an original, non-copyrighted WebAudio melody.
+    // Requires a user gesture (the spin click provides that).
+    try {
+      const audio = new Audio('eid.mp3');
+      audio.preload = 'auto';
+      audio.volume = 0.75;
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {});
+      }
+      window.setTimeout(() => {
+        audio.pause();
+        audio.currentTime = 0;
+      }, durationMs);
+      return;
+    } catch {
+      // ignore and use WebAudio
+    }
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+
+    try {
+      const ctx = new AudioCtx();
+      const master = ctx.createGain();
+      master.gain.value = 0.18;
+      master.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      const endT = now + durationMs / 1000;
+
+      // Hijaz-ish flavor (approx): A, Bb, C#, D, E, F, G, A
+      const scale = [440, 466.16, 554.37, 587.33, 659.25, 698.46, 783.99, 880];
+      const seq = [0, 1, 2, 3, 2, 1, 0, 4, 3, 2, 3, 4, 6, 7, 6, 4, 3, 2, 1, 0];
+
+      function note(t0, freq, dur, type, gain) {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, t0);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(gain, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        osc.connect(g);
+        g.connect(master);
+        osc.start(t0);
+        osc.stop(t0 + dur + 0.03);
+      }
+
+      // Light click percussion via short noise bursts.
+      const noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.0), ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.2;
+
+      function click(t0) {
+        const src = ctx.createBufferSource();
+        const g = ctx.createGain();
+        src.buffer = noiseBuf;
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.08);
+        src.connect(g);
+        g.connect(master);
+        src.start(t0);
+        src.stop(t0 + 0.1);
+      }
+
+      let t = now + 0.02;
+      const step = 0.15;
+      let i = 0;
+      while (t < endT - 0.25) {
+        const f = scale[seq[i % seq.length]];
+        note(t, f, 0.13, 'triangle', 0.75);
+        // gentle drone/harmony
+        if (i % 3 === 0) note(t, scale[0] / 2, 0.22, 'sine', 0.18);
+        // occasional ornament
+        if (i % 7 === 0) note(t + 0.06, f * 1.01, 0.08, 'sine', 0.22);
+        // subtle percussion
+        if (i % 2 === 0) click(t + 0.02);
+        t += step;
+        i++;
+      }
+
+      window.setTimeout(() => {
+        ctx.close().catch(() => {});
+      }, durationMs + 250);
+    } catch {
+      // Ignore audio failures.
+    }
   }
 
   // Fireworks / particles
@@ -257,7 +428,7 @@
         vx: Math.cos(ang) * spd,
         vy: Math.sin(ang) * spd,
         life: 0,
-        ttl: 1.6 + Math.random() * 0.9,
+        ttl: 1.1 + Math.random() * 0.7,
         size: 1.4 + Math.random() * 2.4,
         color,
         drag: 0.985,
@@ -265,19 +436,19 @@
     }
   }
 
-  function sprinkleFestoon() {
+  function sprinkleFestoon(durationMs) {
     festoonEl.classList.add('on');
-    window.setTimeout(() => festoonEl.classList.remove('on'), 2600);
+    window.setTimeout(() => festoonEl.classList.remove('on'), durationMs);
   }
 
-  function startFinale() {
+  function startFinale(durationMs = 6500) {
     resizeFx();
     fx.running = true;
     fx.particles.length = 0;
     fx.lastT = performance.now();
-    fx.endAt = fx.lastT + 2600;
+    fx.endAt = fx.lastT + durationMs;
 
-    sprinkleFestoon();
+    sprinkleFestoon(Math.min(durationMs, 6500));
 
     // initial bursts
     const w = window.innerWidth;
@@ -375,38 +546,78 @@
   function spin() {
     if (wheel.spinning) return;
 
-    const picked = pickLogWeighted(values);
+    const picked = pickWeighted(values, weights);
     wheel.selectedIndex = picked.index;
+
+    // Disable button for 30 seconds after spin starts
+    spinBtn.disabled = true;
+    setTimeout(() => {
+      spinBtn.disabled = false;
+    }, 30000);
 
     setStatus('Spinning…');
     setResult(null);
     lockUI(true);
+    hideModal();
 
     wheel.spinning = true;
     wheel.startRotation = wheel.rotation;
     wheel.targetRotation = rotationToLandOnIndex(wheel.selectedIndex);
-    wheel.startTime = performance.now();
-    wheel.duration = 4600 + Math.random() * 800;
 
-    requestAnimationFrame(tick);
+    // Time-based animation: spin duration is 6–7 seconds for smooth feel.
+    wheel.startTime = performance.now();
+    wheel.duration = 6200 + Math.random() * 800; // 6.2–7.0 seconds
+
+    requestAnimationFrame(tickPhysics);
 
     // Prepare result text (revealed at end)
     wheel._pendingValue = picked.value;
   }
 
-  function tick(now) {
-    const t = (now - wheel.startTime) / wheel.duration;
-    const clamped = Math.max(0, Math.min(1, t));
-    const eased = easeOutCubic(clamped);
+  function tickPhysics(now) {
+    if (!wheel.spinning) return;
 
-    wheel.rotation = wheel.startRotation + (wheel.targetRotation - wheel.startRotation) * eased;
+    const elapsed = (now - wheel.startTime) / wheel.duration;
+    const t = Math.max(0, Math.min(1, elapsed));
+    // Distance-aware easing so deceleration begins when the wheel is ~6–7 segments away
+    const segmentCount = values.length;
+    const arc = (Math.PI * 2) / segmentCount;
+    const slowdownSegments = 6.5; // target slowdown span in segments
+
+    const totalAngle = wheel.targetRotation - wheel.startRotation;
+    let eased = 0;
+
+    if (totalAngle <= 0) {
+      eased = t; // fallback linear
+    } else {
+      const desiredRemaining = slowdownSegments * arc;
+      const remainingFraction = Math.min(0.95, desiredRemaining / totalAngle);
+      const switchAt = Math.max(0.05, 1 - remainingFraction);
+
+      if (t < switchAt) {
+        // Acceleration phase mapped to cover up to (1 - remainingFraction) of distance
+        const a = t / switchAt;
+        eased = Math.pow(a, 2) * (1 - remainingFraction);
+      } else {
+        // Deceleration phase: easeOutCubic across the final `remainingFraction` portion
+        const late = (t - switchAt) / (1 - switchAt);
+        const lateEased = 1 - Math.pow(1 - Math.max(0, Math.min(1, late)), 3);
+        eased = (1 - remainingFraction) + lateEased * remainingFraction;
+      }
+    }
+
+    wheel.rotation = wheel.startRotation + totalAngle * eased;
     drawWheel();
 
-    if (clamped < 1) {
-      requestAnimationFrame(tick);
+    if (t >= 1) {
+      finishSpin();
       return;
     }
 
+    requestAnimationFrame(tickPhysics);
+  }
+
+  function finishSpin() {
     wheel.spinning = false;
     wheel.rotation = wheel.targetRotation;
     drawWheel();
@@ -415,12 +626,16 @@
     setResult(won);
     setStatus('Eid Mubarak! Enjoy your salami.');
 
-    startFinale();
+    // Instant celebration (fireworks + music), then popup after 2 seconds.
+    // Both fireworks and music stop within ~6–7 seconds.
+    startFinale(6500);
+    playEidMusic(6500);
+    window.setTimeout(() => showModal(won), 2000);
 
     window.setTimeout(() => {
       lockUI(false);
       setStatus('Want another spin?');
-    }, 1200);
+    }, 900);
   }
 
   function redrawAll() {
@@ -437,6 +652,34 @@
   spinBtn.addEventListener('click', spin);
   spinBtn.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' || e.key === ' ') spin();
+  });
+
+  closeModalBtn.addEventListener('click', () => {
+    hideModal();
+    spinBtn.focus({ preventScroll: true });
+  });
+
+  // If a spin-again control exists, wire it up; otherwise modal shows only top-close.
+  if (spinAgainBtn) {
+    spinAgainBtn.addEventListener('click', () => {
+      hideModal();
+      if (!wheel.spinning && !spinBtn.disabled) spin();
+    });
+  }
+
+  modalEl.addEventListener('click', (e) => {
+    const target = e.target;
+    if (target && target.dataset && target.dataset.close === 'true') {
+      hideModal();
+      spinBtn.focus({ preventScroll: true });
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !modalEl.hidden) {
+      hideModal();
+      spinBtn.focus({ preventScroll: true });
+    }
   });
 
   // First paint after layout
