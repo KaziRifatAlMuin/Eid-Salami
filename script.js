@@ -11,6 +11,8 @@
   const modalEl = document.getElementById('modal');
   const modalAmountEl = document.getElementById('modalAmount');
   const closeModalBtn = document.getElementById('closeModal');
+  const sendScreenshotBtn = document.getElementById('sendScreenshotBtn');
+  const downloadShotLink = document.getElementById('downloadShot');
   const spinAgainBtn = document.getElementById('spinAgain');
 
   if (
@@ -412,6 +414,100 @@
 
     // Focus for accessibility
     closeModalBtn.focus({ preventScroll: true });
+  }
+
+  // Compose a spectacular share image, trigger download, then open FB profile.
+  async function composeAndSendScreenshot() {
+    try {
+      // composition size (1200x630 for shareable preview)
+      const W = 1200, H = 630;
+      const off = document.createElement('canvas');
+      off.width = W; off.height = H;
+      const ctx = off.getContext('2d');
+
+      // background gradient
+      const bg = ctx.createLinearGradient(0, 0, W, H);
+      bg.addColorStop(0, '#0a0720');
+      bg.addColorStop(1, '#120b36');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, W, H);
+
+      // subtle radial glow
+      const rg = ctx.createRadialGradient(W * 0.15, H * 0.18, 10, W * 0.15, H * 0.18, W * 0.9);
+      rg.addColorStop(0, 'rgba(246,215,127,0.12)');
+      rg.addColorStop(1, 'rgba(246,215,127,0)');
+      ctx.fillStyle = rg; ctx.fillRect(0,0,W,H);
+
+      // draw wheel snapshot (center-left)
+      const rect = wheelCanvas.getBoundingClientRect();
+      const tempW = Math.min(W * 0.56, rect.width);
+      const tempH = tempW;
+      // draw wheel canvas scaled
+      ctx.save();
+      ctx.translate(W * 0.12, H * 0.5 - tempH/2);
+      try { ctx.drawImage(wheelCanvas, 0, 0, wheelCanvas.width, wheelCanvas.height, 0, 0, tempW, tempH); } catch (e) {}
+      ctx.restore();
+
+      // Draw salami image if loaded (center-right)
+      if (salamiImgLoaded) {
+        const imgW = Math.min(260, W * 0.28);
+        const imgH = imgW * (salamiImg.height / Math.max(1, salamiImg.width));
+        ctx.save();
+        ctx.translate(W * 0.72 - imgW/2, H * 0.34 - imgH/2);
+        try { ctx.drawImage(salamiImg, 0, 0, salamiImg.width, salamiImg.height, 0, 0, imgW, imgH); } catch(e) {}
+        ctx.restore();
+      }
+
+      // Big uppercase instruction (centered, spectacular)
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,255,255,0.98)';
+      ctx.textAlign = 'center';
+      ctx.font = '900 28px ui-sans-serif, system-ui, Segoe UI, Arial';
+      ctx.shadowColor = 'rgba(0,0,0,0.6)';
+      ctx.shadowBlur = 18;
+      const instr = 'TAKE A SCREENSHOT AND SEND THIS TO YOUR RIFAT VAIYA TO GET YOUR EID SALAMI';
+      // wrap text
+      const maxW = W * 0.64;
+      const lines = [];
+      const words = instr.split(' ');
+      let line = '';
+      for (const w of words) {
+        const test = (line ? line + ' ' : '') + w;
+        const m = ctx.measureText(test).width;
+        if (m > maxW && line) { lines.push(line); line = w; } else { line = test; }
+      }
+      if (line) lines.push(line);
+      const startY = H * 0.68 - (lines.length-1) * 26;
+      ctx.fillStyle = 'white';
+      for (let i=0;i<lines.length;i++) {
+        ctx.fillText(lines[i], W * 0.62, startY + i * 42);
+      }
+      ctx.restore();
+
+      // Add modal amount box
+      ctx.save();
+      ctx.fillStyle = 'rgba(6,20,19,0.88)';
+      const boxW = 300, boxH = 96;
+      const bx = W * 0.72 - boxW/2, by = H * 0.86 - boxH/2 - 20;
+      roundRect(ctx, bx, by, boxW, boxH, 14);
+      ctx.fill();
+      ctx.fillStyle = '#ffd28a';
+      ctx.font = '900 36px ui-sans-serif, system-ui, Segoe UI, Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(modalAmountEl.textContent || '৳—', bx + boxW/2, by + boxH/2 + 12);
+      ctx.restore();
+
+      // Open the Facebook profile in a new tab for the user to share
+      const fb = 'https://www.facebook.com/rifatalmuin21';
+      window.open(fb, '_blank');
+      // small visual confirmation
+      try { sprinkleFestoon(2400); startFinale(2400); } catch(e){}
+    } catch (e) {
+      console.error('screenshot failed', e);
+      alert('Unable to create screenshot automatically. The wheel image will download and the Facebook profile will open — please upload manually.');
+      const fb = 'https://www.facebook.com/rifatalmuin21';
+      window.open(fb, '_blank');
+    }
   }
 
   function hideModal() {
@@ -1119,6 +1215,13 @@
     spinAgainBtn.addEventListener('click', () => {
       hideModal();
       if (!wheel.spinning && !spinBtn.disabled) spin();
+    });
+  }
+
+  if (sendScreenshotBtn) {
+    sendScreenshotBtn.addEventListener('click', () => {
+      // ensure modal amount is visible and compose image
+      composeAndSendScreenshot();
     });
   }
 
