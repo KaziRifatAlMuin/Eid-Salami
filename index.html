@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0b2a2a" />
+    <title>Eid Salami Wheel</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <div class="bg-pattern" aria-hidden="true"></div>
+
+    <header class="top">
+        <div class="brand" aria-label="Eid Salami">
+            <div class="mark" aria-hidden="true">
+                <!-- Crescent + star (inline SVG) -->
+                <svg width="40" height="40" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M39.9 9.2c-10.9 0-19.8 8.9-19.8 19.8S29 48.8 39.9 48.8c4 0 7.7-1.2 10.8-3.2-3.6 6.1-10.2 10.2-17.8 10.2C21.5 55.8 12 46.3 12 34.7S21.5 13.6 33.1 13.6c4.4 0 8.5 1.4 11.8 3.8-1.5-4.9-4.9-8.2-4.9-8.2Z"
+                        fill="currentColor" opacity="0.92" />
+                    <path d="M49.8 20.6l2.6 6 6.5.6-4.9 4.3 1.5 6.3-5.7-3.4-5.7 3.4 1.5-6.3-4.9-4.3 6.5-.6 2.6-6Z"
+                        fill="currentColor" />
+                </svg>
+            </div>
+            <div class="brand-text">
+                <div class="kicker">Eid Mubarak</div>
+                <h1 class="title">Eid Salami</h1>
+            </div>
+        </div>
+
+        <div class="chip" role="note">
+            Spin to receive <strong>৳10–৳100</strong>.
+        </div>
+    </header>
+
+    <main class="shell">
+        <section class="panel" aria-label="Wheel game">
+            <div class="wheel-wrap">
+                <div class="pointer" aria-hidden="true"></div>
+                <canvas id="wheel" width="520" height="520" aria-label="Spinning wheel"></canvas>
+                <div class="ring" aria-hidden="true"></div>
+            </div>
+
+            <div class="controls">
+                <button id="spinBtn" class="btn" type="button">
+                    <span class="btn-glow" aria-hidden="true"></span>
+                    <span class="btn-text">Spin the Wheel</span>
+                </button>
+
+                <div class="meta" aria-live="polite" aria-atomic="true">
+                    <div class="hint">Higher end is a bit more likely (log-weighted).</div>
+                    <div id="status" class="status">Ready when you are.</div>
+                </div>
+            </div>
+
+            <div id="result" class="result" aria-live="polite" aria-atomic="true">
+                <div class="result-label">Your Eid Salami</div>
+                <div class="result-value">—</div>
+                <div class="result-sub">May your Eid be filled with peace and joy.</div>
+            </div>
+        </section>
+
+        <section class="panel side" aria-label="Blessing">
+            <div class="dua">
+                <h2 class="dua-title">A little Eid vibe</h2>
+                <p class="dua-text">
+                    Wishing you a beautiful Eid — blessings, smiles, and barakah.
+                </p>
+                <div class="lanterns" aria-hidden="true">
+                    <div class="lantern l1"></div>
+                    <div class="lantern l2"></div>
+                    <div class="lantern l3"></div>
+                </div>
+                <div class="smallprint">Tap Spin → watch the finale.</div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Celebration layers -->
+    <canvas id="fx" class="fx" aria-hidden="true"></canvas>
+    <div id="festoon" class="festoon" aria-hidden="true"></div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
