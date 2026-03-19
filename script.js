@@ -129,6 +129,14 @@
     pink: '#ff5f87',
   };
 
+  // Center salami image for the wheel medallion. If `salami.png` is present
+  // it will be drawn in the wheel center; otherwise the existing text is used.
+  let salamiImg = new Image();
+  let salamiImgLoaded = false;
+  salamiImg.onload = () => { salamiImgLoaded = true; redrawAll(); };
+  salamiImg.onerror = () => { salamiImgLoaded = false; };
+  salamiImg.src = 'salami.png';
+
   // Shared AudioContext (created/resumed on first user gesture) to avoid autoplay restrictions
   let sharedAudioCtx = null;
   let backgroundAudio = null;
@@ -294,12 +302,49 @@
     wheelCtx.lineWidth = 2;
     wheelCtx.stroke();
 
-    wheelCtx.fillStyle = 'rgba(6,20,19,.95)';
-    wheelCtx.font = '900 16px ui-sans-serif, system-ui, Segoe UI, Arial';
-    wheelCtx.textAlign = 'center';
-    wheelCtx.textBaseline = 'middle';
-    wheelCtx.fillText('EID', 0, -9);
-    wheelCtx.fillText('SALAMI', 0, 11);
+    // Pulsing halo/glow behind center image (makes medallion more lively)
+    if (salamiImgLoaded) {
+      try {
+        const t = (Date.now() % 1200) / 1200; // 0..1
+        const alpha = 0.18 + 0.12 * Math.sin(t * Math.PI * 2);
+        const halo = wheelCtx.createRadialGradient(0, 0, r * 0.22, 0, 0, r * 0.9);
+        halo.addColorStop(0, `rgba(246,215,127,${alpha.toFixed(3)})`);
+        halo.addColorStop(1, 'rgba(246,215,127,0)');
+        wheelCtx.save();
+        wheelCtx.globalCompositeOperation = 'lighter';
+        wheelCtx.globalAlpha = 1;
+        wheelCtx.beginPath();
+        wheelCtx.arc(0, 0, r * 0.9, 0, Math.PI * 2);
+        wheelCtx.fillStyle = halo;
+        wheelCtx.fill();
+        wheelCtx.restore();
+      } catch (e) {}
+    }
+
+    // Draw center medallion content: prefer the salami image if available,
+    // otherwise fall back to textual label.
+    if (salamiImgLoaded) {
+      try {
+        const imgW = r * 0.9 * 0.9; // size relative to medallion radius
+        const imgH = imgW * (salamiImg.height / Math.max(1, salamiImg.width));
+        wheelCtx.drawImage(salamiImg, -imgW / 2, -imgH / 2 - 4, imgW, imgH);
+      } catch (e) {
+        // fallback to text on any drawing error
+        wheelCtx.fillStyle = 'rgba(6,20,19,.95)';
+        wheelCtx.font = '900 16px ui-sans-serif, system-ui, Segoe UI, Arial';
+        wheelCtx.textAlign = 'center';
+        wheelCtx.textBaseline = 'middle';
+        wheelCtx.fillText('EID', 0, -9);
+        wheelCtx.fillText('SALAMI', 0, 11);
+      }
+    } else {
+      wheelCtx.fillStyle = 'rgba(6,20,19,.95)';
+      wheelCtx.font = '900 16px ui-sans-serif, system-ui, Segoe UI, Arial';
+      wheelCtx.textAlign = 'center';
+      wheelCtx.textBaseline = 'middle';
+      wheelCtx.fillText('EID', 0, -9);
+      wheelCtx.fillText('SALAMI', 0, 11);
+    }
 
     wheelCtx.restore();
 
@@ -338,13 +383,48 @@
 
   function showModal(amount) {
     modalAmountEl.textContent = `৳${amount}`;
+    // Reveal modal
     modalEl.hidden = false;
+
+    // Spectacular salami image reveal (if available)
+    try {
+      const img = document.getElementById('salamiImg');
+      if (img) {
+        img.hidden = false;
+        img.classList.remove('pop');
+        // Force reflow to restart animation
+        void img.offsetWidth;
+        img.classList.add('pop');
+        // add shine class to wrapper to animate overlay
+        const wrap = img.closest('.salami-wrap');
+        if (wrap) {
+          wrap.classList.remove('shine');
+          void wrap.offsetWidth;
+          wrap.classList.add('shine');
+          // also add a subtle ongoing shiny pulse
+          img.classList.add('shiny');
+        }
+      }
+    } catch (e) {}
+
+    // Small visual finale when the modal appears
+    try { startFinale(3000); } catch (e) {}
+
     // Focus for accessibility
     closeModalBtn.focus({ preventScroll: true });
   }
 
   function hideModal() {
     modalEl.hidden = true;
+    try {
+      const img = document.getElementById('salamiImg');
+      if (img) {
+        img.hidden = true;
+        img.classList.remove('pop', 'shiny');
+        const wrap = img.closest('.salami-wrap');
+        if (wrap) wrap.classList.remove('shine');
+      }
+    } catch (e) {}
   }
 
   function rotationToLandOnIndex(index) {

@@ -387,22 +387,19 @@ body{
 .modal-card{
   position:relative;
   width:min(520px, 92vw);
-  border-radius:22px;
-  padding:18px 18px 16px;
-  background:linear-gradient(180deg, rgba(232,255,247,.10), rgba(232,255,247,.05));
-  border:1px solid rgba(232,255,247,.18);
-  box-shadow: 0 30px 160px rgba(0,0,0,.6);
-  overflow:hidden;
+  border-radius:20px;
+  padding:28px 24px 24px;
+  background:linear-gradient(135deg, rgba(232,255,247,.12), rgba(232,255,247,.06));
+  border:1px solid rgba(232,255,247,.14);
+  box-shadow: 0 40px 120px rgba(0,0,0,.5), 0 0 0 1px rgba(232,255,247,.08);
+  overflow:visible;
 }
 
 .modal-card::before{
   content:"";
   position:absolute;
-  inset:-2px;
-  background:
-    radial-gradient(520px 220px at 20% 0%, rgba(246,215,127,.22), transparent 60%),
-    radial-gradient(480px 220px at 90% 0%, rgba(38,243,210,.20), transparent 55%);
-  opacity:1;
+  inset:0;
+  background:none;
   pointer-events:none;
 }
 
@@ -437,14 +434,84 @@ body{
   background:linear-gradient(180deg, var(--gold2), var(--gold));
 }
 
-.modal-title{margin:12px 0 8px; font-size:22px}
+.modal-title{
+  margin:8px 0 12px;
+  font-size:18px;
+  font-weight:600;
+  letter-spacing:.03em;
+  text-transform:uppercase;
+  color:rgba(232,255,247,.7);
+}
 
 .modal-amount{
-  font-size:44px;
-  font-weight:1000;
-  letter-spacing:.02em;
-  margin:2px 0 6px;
-  text-shadow:0 22px 90px rgba(246,215,127,.25);
+  font-size:52px;
+  font-weight:900;
+  letter-spacing:.01em;
+  margin:4px 0 14px;
+  text-shadow:none;
+  color:var(--ink);
+}
+
+/* Salami image reveal in modal */
+.modal-salami{
+  display:block;
+  width:170px;
+  height:auto;
+  margin:6px auto 8px;
+  transform-origin:center center;
+  filter: drop-shadow(0 18px 40px rgba(0,0,0,.55));
+}
+
+@keyframes popIn {
+  0% { transform: scale(0) rotate(-28deg); opacity: 0 }
+  55% { transform: scale(1.18) rotate(10deg); opacity: 1 }
+  75% { transform: scale(0.95) rotate(-6deg); }
+  90% { transform: scale(1.04) rotate(3deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1 }
+}
+
+.modal-salami.pop {
+  animation: popIn 820ms cubic-bezier(.22,.9,.3,1) both;
+  filter: drop-shadow(0 16px 40px rgba(0,0,0,.3));
+}
+
+/* salami wrapper for hover + shine */
+.salami-wrap{
+  position:relative;
+  display:inline-block;
+  width:170px;
+  margin:0 auto 8px;
+}
+
+.salami-wrap::after{
+  content:"";
+  position:absolute;
+  left:-40%;
+  top:0;
+  width:60%;
+  height:100%;
+  transform:skewX(-18deg) translateX(-120%);
+  background:linear-gradient(90deg, rgba(255,255,255,0.0), rgba(255,255,255,0.65), rgba(255,255,255,0.0));
+  pointer-events:none;
+  opacity:0.0;
+}
+
+@keyframes shineMove {
+  0% { transform:skewX(-18deg) translateX(-120%); opacity:0 }
+  40% { opacity:0.9 }
+  60% { opacity:0.9 }
+  100% { transform:skewX(-18deg) translateX(220%); opacity:0 }
+}
+
+.salami-wrap.shine::after{
+  display:none;
+}
+
+/* Hover effect when modal image is visible */
+.salami-wrap:hover .modal-salami{
+  transform: scale(1.06) rotate(-3deg);
+  transition: transform 200ms cubic-bezier(.2,.8,.2,1);
+  filter: drop-shadow(0 20px 50px rgba(0,0,0,.35)) brightness(1.06);
 }
 
 .modal-text{margin:0 0 12px; color:var(--muted); line-height:1.6}

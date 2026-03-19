@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="theme-color" content="#0a0720" />
     <title>Eid Salami Wheel</title>
+        <!-- Inline SVG favicon (small, matches theme) -->
+        <!-- Inline SVG favicon: crescent + star (Eid-themed) -->
+        <link rel="icon"
+            href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Cpath%20d='M41%2014c-11%200-20%209-20%2020s9%2020%2020%2020c5%200%209-2%2012-5-3%206-9%209-16%209-11%200-20-9-20-20S30%2014%2041%2014z'%20fill='%23f6d77f'/%3E%3Cpath%20d='M47%2019l2%205%205%20.5-3.8%203.3%201.1%205-4.4-2.6-4.4%202.6%201.1-5L43%2024.5%2048%2024z'%20fill='%23120b36'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="style.css" />
 </head>
 
@@ -72,8 +76,12 @@
         <div class="modal-card" role="document">
             <button id="closeModal" class="modal-close" aria-label="Close">×</button>
             <div class="modal-badge">Eid Salami by Kazi Rifat Al Muin</div>
-            <h2 id="modalTitle" class="modal-title">Eid Mubarak!</h2>
-            <div id="modalAmount" class="modal-amount">৳—</div>
+                <h2 id="modalTitle" class="modal-title">Eid Mubarak!</h2>
+                        <!-- Spectacular salami reveal -->
+                        <div class="salami-wrap">
+                            <img id="salamiImg" class="modal-salami" src="salami.png" alt="Eid Salami" hidden>
+                        </div>
+                <div id="modalAmount" class="modal-amount">৳—</div>
             <p class="modal-text">May Allah accept your prayers and fill your home with joy.</p>
         </div>
     </div>
