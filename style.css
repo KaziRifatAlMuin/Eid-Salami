@@ -155,7 +155,7 @@ body{
 }
 
 #wheel{
-  width:min(680px, 92vw, 74vh);
+  width:min(580px, 84vw, 58vh);
   height:auto;
   aspect-ratio:1/1;
   border-radius:999px;
@@ -171,7 +171,7 @@ body{
 
 .ring{
   position:absolute;
-  width:min(680px, 92vw, 74vh);
+  width:min(580px, 84vw, 58vh);
   aspect-ratio:1/1;
   border-radius:999px;
   box-shadow:
@@ -186,7 +186,7 @@ body{
 .pointer{
   position:absolute;
   /* place pointer anchored to top edge of the wheel and center horizontally */
-  top: calc(50% - (min(680px, 92vw, 74vh) / 2) - clamp(14px, 2.5vw, 40px));
+  top: calc(50% - (min(580px, 84vw, 58vh) / 2) - clamp(14px, 2.5vw, 40px));
   left:50%;
   transform:translateX(-50%) rotate(180deg);
   width:0;
