@@ -2,6 +2,8 @@
   const wheelCanvas = document.getElementById('wheel');
   const fxCanvas = document.getElementById('fx');
   const spinBtn = document.getElementById('spinBtn');
+  const cooldownCanvas = document.getElementById('cooldownCanvas');
+  const cooldownSecondsEl = document.getElementById('cooldownSeconds');
   const statusEl = document.getElementById('status');
   const resultEl = document.getElementById('result');
   const resultValueEl = resultEl.querySelector('.result-value');
@@ -30,18 +32,22 @@
   const fxCtx = fxCanvas.getContext('2d');
   if (!wheelCtx || !fxCtx) return;
 
-  // Values (same set, intentionally NOT in sorted order for the wheel layout)
-  const values = [35, 12, 80, 23, 50, 10, 90, 15, 70, 26, 100, 20, 60, 45, 30, 40];
+  // Values (user-provided set, intentionally NOT in sorted order for the wheel layout)
+  const values = [35, 10, 80, 25, 60, 12, 70, 17, 100, 27, 45, 20, 50, 30, 40, 23, 90, 15];
 
   // Target cumulative probabilities (CDF):
-  // P(value <= 20) = 50%
+  // P(value <= 20) = 40%
+  // P(value <= 25) = 75%
   // P(value <= 30) = 90%
+  // P(value <= 35) = 95%
   // P(value <= 40) = 99%
   // P(value <= 50) = 99.9%
   // ...continuing with extra 9s for later ranges.
   const cdfTargets = [
-    { max: 20, p: 0.5 },
-    { max: 30, p: 0.9 },
+    { max: 20, p: 0.40 },
+    { max: 25, p: 0.75 },
+    { max: 30, p: 0.90 },
+    { max: 35, p: 0.95 },
     { max: 40, p: 0.99 },
     { max: 50, p: 0.999 },
     { max: 60, p: 0.9999 },
@@ -103,6 +109,53 @@
     pink: '#ff5f87',
   };
 
+  // Shared AudioContext (created/resumed on first user gesture) to avoid autoplay restrictions
+  let sharedAudioCtx = null;
+  let backgroundAudio = null;
+  let backgroundLooping = false;
+  function initAudioContext() {
+    if (sharedAudioCtx) return;
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    try {
+      sharedAudioCtx = new AudioCtx();
+      if (sharedAudioCtx.state === 'suspended') {
+        sharedAudioCtx.resume().catch(() => {});
+      }
+      // Start background music loop when audio becomes available
+      try { playEidMusic(); } catch (e) {}
+    } catch (e) {
+      sharedAudioCtx = null;
+    }
+  }
+
+  // Attempt to unlock the audio system by resuming and briefly playing a silent buffer.
+  function unlockAudio() {
+    if (!sharedAudioCtx) return;
+    if (sharedAudioCtx.state === 'suspended') {
+      sharedAudioCtx.resume().catch(() => {});
+    }
+
+    try {
+      const ctx = sharedAudioCtx;
+      const g = ctx.createGain();
+      g.gain.value = 0.0001; // effectively silent but will unlock
+      g.connect(ctx.destination);
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = 220;
+      o.connect(g);
+      o.start();
+      o.stop(ctx.currentTime + 0.03);
+      // disconnect after short while
+      window.setTimeout(() => {
+        try { o.disconnect(); g.disconnect(); } catch (e) {}
+      }, 120);
+    } catch (e) {
+      // ignore
+    }
+  }
+
   const wheel = {
     rotation: 0,
     spinning: false,
@@ -111,6 +164,8 @@
     selectedIndex: 0,
     startTime: 0,
     duration: 0,
+    decelDuration: 0,
+    fastDuration: 0,
   };
 
   function resizeFx() {
@@ -317,95 +372,201 @@
   }
 
   function playEidMusic(durationMs = 6500) {
-    // If the user provides an `eid.mp3` in the same folder, prefer that.
-    // Otherwise fall back to an original, non-copyrighted WebAudio melody.
-    // Requires a user gesture (the spin click provides that).
-    try {
-      const audio = new Audio('eid.mp3');
-      audio.preload = 'auto';
-      audio.volume = 0.75;
-      const p = audio.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(() => {});
+    // Start or ensure a continuous looping background track `romjan.m4a` is playing.
+    // This is idempotent and safe to call multiple times. If file playback is
+    // blocked or missing, a soft WebAudio ambient loop will be used instead.
+    function doWebAudio() {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+
+      try {
+        const ctx = sharedAudioCtx || new AudioCtx();
+        if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+        const master = ctx.createGain();
+        master.gain.value = 0.18;
+        master.connect(ctx.destination);
+
+        const now = ctx.currentTime;
+        const endT = now + durationMs / 1000;
+
+        // Hijaz-ish flavor (approx): A, Bb, C#, D, E, F, G, A
+        const scale = [440, 466.16, 554.37, 587.33, 659.25, 698.46, 783.99, 880];
+        const seq = [0, 1, 2, 3, 2, 1, 0, 4, 3, 2, 3, 4, 6, 7, 6, 4, 3, 2, 1, 0];
+
+        function note(t0, freq, dur, type, gain) {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, t0);
+          g.gain.setValueAtTime(0.0001, t0);
+          g.gain.exponentialRampToValueAtTime(gain, t0 + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+          osc.connect(g);
+          g.connect(master);
+          osc.start(t0);
+          osc.stop(t0 + dur + 0.03);
+        }
+
+        // Light click percussion via short noise bursts.
+        const noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.0), ctx.sampleRate);
+        const data = noiseBuf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.2;
+
+        function click(t0) {
+          const src = ctx.createBufferSource();
+          const g = ctx.createGain();
+          src.buffer = noiseBuf;
+          g.gain.setValueAtTime(0.0001, t0);
+          g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.08);
+          src.connect(g);
+          g.connect(master);
+          src.start(t0);
+          src.stop(t0 + 0.1);
+        }
+
+        let t = now + 0.02;
+        const step = 0.15;
+        let i = 0;
+        while (t < endT - 0.25) {
+          const f = scale[seq[i % seq.length]];
+          note(t, f, 0.13, 'triangle', 0.75);
+          // gentle drone/harmony
+          if (i % 3 === 0) note(t, scale[0] / 2, 0.22, 'sine', 0.18);
+          // occasional ornament
+          if (i % 7 === 0) note(t + 0.06, f * 1.01, 0.08, 'sine', 0.22);
+          // subtle percussion
+          if (i % 2 === 0) click(t + 0.02);
+          t += step;
+          i++;
+        }
+
+        // Close only if we created a private context; if using sharedAudioCtx, keep it open.
+        if (ctx !== sharedAudioCtx) {
+          window.setTimeout(() => {
+            try { ctx.close().catch(() => {}); } catch (e) {}
+          }, durationMs + 250);
+        }
+      } catch {
+        // Ignore audio failures.
       }
-      window.setTimeout(() => {
-        audio.pause();
-        audio.currentTime = 0;
-      }, durationMs);
-      return;
-    } catch {
-      // ignore and use WebAudio
     }
 
+    if (backgroundLooping) return; // already running
+
+    // Try to start a looping HTMLAudio using romjan first.
+    try {
+      const candidate = 'romjan.m4a';
+      const a = new Audio(candidate);
+      a.loop = true;
+      a.preload = 'auto';
+      a.volume = 0.5;
+      const p = a.play();
+      if (p && typeof p.then === 'function') {
+        p.then(() => {
+          backgroundAudio = a;
+          backgroundLooping = true;
+        }).catch(() => {
+          // fallback to WebAudio
+          doWebAudio();
+        });
+      } else {
+        backgroundAudio = a;
+        backgroundLooping = true;
+      }
+      return;
+    } catch (e) {
+      // fallthrough
+    }
+
+    doWebAudio();
+  }
+
+  // Play a drum track once per spin. Tries drum.m4a / drum.mp3 then falls back to a
+  // short WebAudio percussion sequence matching the spin duration (6s).
+  function playDrumOnce() {
+    // If we have a backgroundAudio that is muted or not available, still attempt drum.
+    const candidates = ['drum.m4a', 'drum.mp3'];
+    for (const src of candidates) {
+      try {
+        const a = new Audio(src);
+        a.preload = 'auto';
+        a.volume = 0.9;
+        const p = a.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => {
+            // continue to next candidate or fallback below
+          });
+        }
+        // We attempt to play the first candidate and return immediately; if it fails
+        // the catch above will not throw but we still consider the attempt made.
+        return;
+      } catch (e) {
+        // try next
+      }
+    }
+
+    // Fallback: synthesize a drum pattern for 6.4s (match spin duration)
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return;
-
     try {
-      const ctx = new AudioCtx();
+      const ctx = sharedAudioCtx || new AudioCtx();
+      if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
       const master = ctx.createGain();
-      master.gain.value = 0.18;
+      master.gain.value = 0.6;
       master.connect(ctx.destination);
 
-      const now = ctx.currentTime;
-      const endT = now + durationMs / 1000;
+      const now = ctx.currentTime + 0.02;
+      const duration = 6.4; // 6.4 seconds (match spin duration)
 
-      // Hijaz-ish flavor (approx): A, Bb, C#, D, E, F, G, A
-      const scale = [440, 466.16, 554.37, 587.33, 659.25, 698.46, 783.99, 880];
-      const seq = [0, 1, 2, 3, 2, 1, 0, 4, 3, 2, 3, 4, 6, 7, 6, 4, 3, 2, 1, 0];
-
-      function note(t0, freq, dur, type, gain) {
-        const osc = ctx.createOscillator();
+      function kick(t) {
+        const o = ctx.createOscillator();
         const g = ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, t0);
-        g.gain.setValueAtTime(0.0001, t0);
-        g.gain.exponentialRampToValueAtTime(gain, t0 + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-        osc.connect(g);
+        o.type = 'sine';
+        o.frequency.setValueAtTime(120, t);
+        o.frequency.exponentialRampToValueAtTime(50, t + 0.25);
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(1.0, t + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+        o.connect(g);
         g.connect(master);
-        osc.start(t0);
-        osc.stop(t0 + dur + 0.03);
+        o.start(t);
+        o.stop(t + 0.45);
       }
 
-      // Light click percussion via short noise bursts.
-      const noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.0), ctx.sampleRate);
-      const data = noiseBuf.getChannelData(0);
-      for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.2;
-
-      function click(t0) {
+      function snare(t) {
+        const buf = ctx.createBuffer(1, ctx.sampleRate * 0.2, ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / 2000);
         const src = ctx.createBufferSource();
         const g = ctx.createGain();
-        src.buffer = noiseBuf;
-        g.gain.setValueAtTime(0.0001, t0);
-        g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.08);
+        src.buffer = buf;
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.9, t + 0.005);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
         src.connect(g);
         g.connect(master);
-        src.start(t0);
-        src.stop(t0 + 0.1);
+        src.start(t);
+        src.stop(t + 0.2);
       }
 
-      let t = now + 0.02;
-      const step = 0.15;
-      let i = 0;
-      while (t < endT - 0.25) {
-        const f = scale[seq[i % seq.length]];
-        note(t, f, 0.13, 'triangle', 0.75);
-        // gentle drone/harmony
-        if (i % 3 === 0) note(t, scale[0] / 2, 0.22, 'sine', 0.18);
-        // occasional ornament
-        if (i % 7 === 0) note(t + 0.06, f * 1.01, 0.08, 'sine', 0.22);
-        // subtle percussion
-        if (i % 2 === 0) click(t + 0.02);
-        t += step;
-        i++;
+      // Simple pattern: 4/4 kick on beats, snare on 2 and 4, small fills.
+      const step = 0.25;
+      const ticks = Math.ceil(duration / step);
+      for (let i = 0; i < ticks; i++) {
+        const t = now + i * step;
+        if (i % 4 === 0) kick(t);
+        if (i % 4 === 2) snare(t + 0.01);
+        if (i % 8 === 7) snare(t + 0.12);
       }
 
-      window.setTimeout(() => {
-        ctx.close().catch(() => {});
-      }, durationMs + 250);
-    } catch {
-      // Ignore audio failures.
+      if (ctx !== sharedAudioCtx) {
+        window.setTimeout(() => {
+          try { ctx.close().catch(() => {}); } catch (e) {}
+        }, duration * 1000 + 300);
+      }
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -460,8 +621,107 @@
       burst(x, y, c);
     }
 
-    requestAnimationFrame(fxTick);
+      requestAnimationFrame(fxTick);
+      // Play fireworks sound effect alongside visuals
+      playFireworks(durationMs);
   }
+
+    function playFireworks(durationMs = 6500) {
+      // Try audio file fallback first
+      // If we don't have a shared AudioContext, try the audio file fallback first.
+      if (!sharedAudioCtx) {
+        try {
+          const a = new Audio('fireworks.mp3');
+          a.preload = 'auto';
+          a.volume = 0.7;
+          const p = a.play();
+          if (p && typeof p.catch === 'function') p.catch(() => {});
+          // stop after duration
+          window.setTimeout(() => {
+            try { a.pause(); a.currentTime = 0; } catch (e) {}
+          }, durationMs);
+          return;
+        } catch (e) {
+          // fall back to WebAudio
+        }
+      }
+
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+
+      try {
+        const ctx = sharedAudioCtx || new AudioCtx();
+        if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
+        const master = ctx.createGain();
+        master.gain.value = 0.18;
+        master.connect(ctx.destination);
+
+        // create a short noise buffer for pops
+        const noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.0), ctx.sampleRate);
+        const data = noiseBuf.getChannelData(0);
+        for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * 0.6;
+
+        function pop(t0, vol = 0.6) {
+          const src = ctx.createBufferSource();
+          src.buffer = noiseBuf;
+          const bp = ctx.createBiquadFilter();
+          bp.type = 'bandpass';
+          bp.frequency.setValueAtTime(1200 + Math.random() * 2800, t0);
+          bp.Q.value = 0.8 + Math.random() * 3.0;
+          const g = ctx.createGain();
+          g.gain.setValueAtTime(0.0001, t0);
+          g.gain.exponentialRampToValueAtTime(vol, t0 + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.35 + Math.random() * 0.15);
+          src.connect(bp);
+          bp.connect(g);
+          g.connect(master);
+          src.start(t0);
+          src.stop(t0 + 0.5 + Math.random() * 0.2);
+        }
+
+        function boom(t0, vol = 0.8) {
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(60 + Math.random() * 40, t0);
+          g.gain.setValueAtTime(0.0001, t0);
+          g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.6 + Math.random() * 0.6);
+          const lp = ctx.createBiquadFilter();
+          lp.type = 'lowpass';
+          lp.frequency.setValueAtTime(400 + Math.random() * 600, t0);
+          osc.connect(lp);
+          lp.connect(g);
+          g.connect(master);
+          osc.start(t0);
+          osc.stop(t0 + 1.4 + Math.random() * 0.6);
+        }
+
+        const now = ctx.currentTime + 0.02;
+        const endT = now + durationMs / 1000;
+        let t = now;
+        while (t < endT) {
+          // schedule a small cluster
+          const clusterCount = 1 + Math.floor(Math.random() * 3);
+          for (let i = 0; i < clusterCount; i++) {
+            const dt = Math.random() * 0.5;
+            pop(t + dt, 0.3 + Math.random() * 0.9);
+          }
+          // occasional boom
+          if (Math.random() < 0.33) boom(t + 0.06, 0.5 + Math.random() * 0.9);
+          t += 0.35 + Math.random() * 0.7;
+        }
+
+        // close only if we created a private context
+        if (ctx !== sharedAudioCtx) {
+          window.setTimeout(() => {
+            try { ctx.close().catch(() => {}); } catch (e) {}
+          }, durationMs + 500);
+        }
+      } catch (e) {
+        // fail gracefully
+      }
+    }
 
   function fxTick(t) {
     if (!fx.running) return;
@@ -546,14 +806,15 @@
   function spin() {
     if (wheel.spinning) return;
 
+    // Ensure an AudioContext exists / is resumed (must be called during user gesture)
+    initAudioContext();
+    unlockAudio();
+
     const picked = pickWeighted(values, weights);
     wheel.selectedIndex = picked.index;
 
-    // Disable button for 30 seconds after spin starts
-    spinBtn.disabled = true;
-    setTimeout(() => {
-      spinBtn.disabled = false;
-    }, 30000);
+    // Start a 30s cooldown visual + lock UI
+    startCooldown(30000);
 
     setStatus('Spinning…');
     setResult(null);
@@ -564,9 +825,15 @@
     wheel.startRotation = wheel.rotation;
     wheel.targetRotation = rotationToLandOnIndex(wheel.selectedIndex);
 
-    // Time-based animation: spin duration is 6–7 seconds for smooth feel.
+    // Fixed spin duration: exactly 6400ms per user request.
+    wheel.duration = 6400;
+    // Keep a deceleration window ~2.5s (so negative acceleration is felt).
+    wheel.decelDuration = 2500;
+    wheel.fastDuration = Math.max(0, wheel.duration - wheel.decelDuration);
     wheel.startTime = performance.now();
-    wheel.duration = 6200 + Math.random() * 800; // 6.2–7.0 seconds
+
+    // Play the drum track once for this spin.
+    try { playDrumOnce(); } catch (e) {}
 
     requestAnimationFrame(tickPhysics);
 
@@ -576,34 +843,30 @@
 
   function tickPhysics(now) {
     if (!wheel.spinning) return;
-
-    const elapsed = (now - wheel.startTime) / wheel.duration;
-    const t = Math.max(0, Math.min(1, elapsed));
-    // Distance-aware easing so deceleration begins when the wheel is ~6–7 segments away
-    const segmentCount = values.length;
-    const arc = (Math.PI * 2) / segmentCount;
-    const slowdownSegments = 6.5; // target slowdown span in segments
+    const elapsedMs = now - wheel.startTime;
+    const total = wheel.duration;
+    const t = Math.max(0, Math.min(1, elapsedMs / total));
 
     const totalAngle = wheel.targetRotation - wheel.startRotation;
     let eased = 0;
 
-    if (totalAngle <= 0) {
-      eased = t; // fallback linear
-    } else {
-      const desiredRemaining = slowdownSegments * arc;
-      const remainingFraction = Math.min(0.95, desiredRemaining / totalAngle);
-      const switchAt = Math.max(0.05, 1 - remainingFraction);
+    // Phase split: [0 .. switchAt) => fast phase (ease-in); [switchAt .. 1] => controlled deceleration
+    const switchAt = wheel.fastDuration / total;
+    function easeInQuad(x) { return x * x; }
+    function easeOutCubic(x) { return 1 - Math.pow(1 - x, 3); }
 
-      if (t < switchAt) {
-        // Acceleration phase mapped to cover up to (1 - remainingFraction) of distance
-        const a = t / switchAt;
-        eased = Math.pow(a, 2) * (1 - remainingFraction);
-      } else {
-        // Deceleration phase: easeOutCubic across the final `remainingFraction` portion
-        const late = (t - switchAt) / (1 - switchAt);
-        const lateEased = 1 - Math.pow(1 - Math.max(0, Math.min(1, late)), 3);
-        eased = (1 - remainingFraction) + lateEased * remainingFraction;
-      }
+    if (elapsedMs <= wheel.fastDuration) {
+      const local = Math.max(0, Math.min(1, elapsedMs / wheel.fastDuration));
+      // Use ease-in to build speed
+      eased = easeInQuad(local) * switchAt; // cover the switchAt fraction of distance
+    } else {
+      const lateMs = elapsedMs - wheel.fastDuration;
+      const lateT = Math.max(0, Math.min(1, lateMs / wheel.decelDuration));
+      // eased portion covered before deceleration
+      const before = switchAt;
+      // decel eased from before .. 1
+      const decelEased = easeOutCubic(lateT);
+      eased = before + decelEased * (1 - before);
     }
 
     wheel.rotation = wheel.startRotation + totalAngle * eased;
@@ -630,11 +893,18 @@
     // Both fireworks and music stop within ~6–7 seconds.
     startFinale(6500);
     playEidMusic(6500);
-    window.setTimeout(() => showModal(won), 2000);
+    window.setTimeout(() => showModal(won), 1000);
 
     window.setTimeout(() => {
-      lockUI(false);
-      setStatus('Want another spin?');
+      // Only re-enable if there is no active cooldown running.
+      const now = performance.now();
+      if (!cooldownEnd || now >= cooldownEnd) {
+        lockUI(false);
+        setStatus('Want another spin?');
+      } else {
+        // Keep disabled until cooldownTick clears it; update status to reflect remaining time
+        setStatus('Cooldown active — please wait');
+      }
     }, 900);
   }
 
@@ -642,6 +912,91 @@
     fitWheelCanvasToCSS();
     drawWheel();
     resizeFx();
+  }
+
+  // Cooldown visualization
+  let cooldownRAF = null;
+  let cooldownEnd = 0;
+  let cooldownDuration = 0;
+  const cooldownCtx = cooldownCanvas ? cooldownCanvas.getContext('2d') : null;
+
+  function startCooldown(durationMs) {
+    spinBtn.disabled = true;
+    cooldownDuration = durationMs;
+    cooldownEnd = performance.now() + durationMs;
+
+    if (cooldownCanvas && cooldownCtx) {
+      const rect = cooldownCanvas.getBoundingClientRect();
+      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      cooldownCanvas.width = Math.floor(rect.width * dpr);
+      cooldownCanvas.height = Math.floor(rect.height * dpr);
+      cooldownCanvas.style.width = `${rect.width}px`;
+      cooldownCanvas.style.height = `${rect.height}px`;
+      cooldownCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    if (cooldownRAF) cancelAnimationFrame(cooldownRAF);
+    cooldownRAF = requestAnimationFrame(cooldownTick);
+  }
+
+  function cooldownTick(now) {
+    const tNow = now || performance.now();
+    const remaining = Math.max(0, cooldownEnd - tNow);
+    const frac = Math.max(0, Math.min(1, remaining / cooldownDuration));
+
+    if (cooldownCtx && cooldownCanvas) {
+      const w = cooldownCanvas.width / (window.devicePixelRatio || 1);
+      const h = cooldownCanvas.height / (window.devicePixelRatio || 1);
+      const ctx = cooldownCtx;
+      ctx.clearRect(0, 0, w, h);
+
+      const pad = 6;
+      const barW = Math.max(24, w - pad * 2);
+      const barH = Math.max(8, h - pad * 2);
+      const x = pad;
+      const y = (h - barH) / 2;
+      const radius = barH / 2;
+
+      // background track
+      ctx.beginPath();
+      roundRect(ctx, x, y, barW, barH, radius);
+      ctx.fillStyle = 'rgba(232,255,247,.06)';
+      ctx.fill();
+
+      // progress (remaining)
+      const fillW = Math.max(0, barW * frac);
+      if (fillW > 0) {
+        ctx.beginPath();
+        roundRect(ctx, x, y, fillW, barH, radius);
+        const grad = ctx.createLinearGradient(x, y, x + barW, y);
+        grad.addColorStop(0, 'rgba(246,215,127,0.98)');
+        grad.addColorStop(1, 'rgba(38,243,210,0.98)');
+        ctx.fillStyle = grad;
+        ctx.fill();
+      }
+    }
+
+    if (cooldownSecondsEl) cooldownSecondsEl.textContent = String(Math.ceil(remaining / 1000));
+
+    if (remaining <= 0) {
+      spinBtn.disabled = false;
+      if (cooldownCtx && cooldownCanvas) cooldownCtx.clearRect(0, 0, cooldownCanvas.width, cooldownCanvas.height);
+      if (cooldownSecondsEl) cooldownSecondsEl.textContent = '0';
+      cooldownRAF = null;
+      return;
+    }
+
+    cooldownRAF = requestAnimationFrame(cooldownTick);
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    const radius = Math.min(r, h / 2, w / 2);
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + w, y, x + w, y + h, radius);
+    ctx.arcTo(x + w, y + h, x, y + h, radius);
+    ctx.arcTo(x, y + h, x, y, radius);
+    ctx.arcTo(x, y, x + w, y, radius);
+    ctx.closePath();
   }
 
   // init
@@ -687,4 +1042,8 @@
     redrawAll();
     setResult(null);
   });
+
+  // Try to start background music at launch. This attempts to play `romjan.m4a` immediately;
+  // browsers may block autoplay until a user gesture, but we'll make a best-effort attempt.
+  try { playEidMusic(); } catch (e) {}
 })();

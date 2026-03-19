@@ -26,12 +26,12 @@
             </div>
             <div class="brand-text">
                 <div class="kicker">Eid Mubarak</div>
-                <h1 class="title">Eid Salami</h1>
+                <h1 class="title">Eid Salami by Kazi Rifat Al Muin</h1>
             </div>
         </div>
 
         <div class="chip" role="note">
-            Spin to receive <strong>৳10–৳100</strong>.
+            Spin to receive <strong>Eid Salami</strong>.
         </div>
     </header>
 
@@ -50,7 +50,6 @@
                 </button>
 
                 <div class="meta" aria-live="polite" aria-atomic="true">
-                    <div class="hint">Odds: ≤৳20 50%, ≤৳30 90%, ≤৳40 99%, ≤৳50 99.9%, then rarer.</div>
                     <div id="status" class="status">Ready when you are.</div>
                 </div>
             </div>
@@ -61,22 +60,8 @@
                 <div class="result-sub">May your Eid be filled with peace and joy.</div>
             </div>
         </section>
-
-        <section class="panel side" aria-label="Blessing">
-            <div class="dua">
-                <h2 class="dua-title">A little Eid vibe</h2>
-                <p class="dua-text">
-                    Wishing you a beautiful Eid — blessings, smiles, and barakah.
-                </p>
-                <div class="lanterns" aria-hidden="true">
-                    <div class="lantern l1"></div>
-                    <div class="lantern l2"></div>
-                    <div class="lantern l3"></div>
-                </div>
-                <div class="smallprint">Tap Spin → watch the finale.</div>
-            </div>
-        </section>
     </main>
+<!-- Bottom cooldown bar (moved to very end) -->
 
     <!-- Celebration layers -->
     <canvas id="fx" class="fx" aria-hidden="true"></canvas>
@@ -86,11 +71,16 @@
         <div class="modal-backdrop" data-close="true" aria-hidden="true"></div>
         <div class="modal-card" role="document">
             <button id="closeModal" class="modal-close" aria-label="Close">×</button>
-            <div class="modal-badge">Eid Salami</div>
+            <div class="modal-badge">Eid Salami by Kazi Rifat Al Muin</div>
             <h2 id="modalTitle" class="modal-title">Eid Mubarak!</h2>
             <div id="modalAmount" class="modal-amount">৳—</div>
             <p class="modal-text">May Allah accept your prayers and fill your home with joy.</p>
         </div>
+    </div>
+    <!-- Cooldown bar placed last so it's visible after scrolling down -->
+    <div class="cooldown-bar" aria-hidden="false">
+        <canvas id="cooldownCanvas" width="800" height="36" aria-hidden="true"></canvas>
+        <div class="cooldown-bar-label"><span id="cooldownSeconds">30</span>s</div>
     </div>
 
     <script src="script.js"></script>
