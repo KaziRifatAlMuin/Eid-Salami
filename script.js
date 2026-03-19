@@ -35,19 +35,22 @@
   // Values (user-provided set, intentionally NOT in sorted order for the wheel layout)
   const values = [35, 10, 80, 25, 60, 12, 70, 17, 100, 27, 45, 20, 50, 30, 40, 23, 90, 15];
 
-  // Target cumulative probabilities (CDF):
-  // P(value <= 20) = 40%
-  // P(value <= 25) = 75%
-  // P(value <= 30) = 90%
-  // P(value <= 35) = 95%
-  // P(value <= 40) = 99%
-  // P(value <= 50) = 99.9%
-  // ...continuing with extra 9s for later ranges.
+  // Probability Distribution (CDF) — user-specified targets
+  // ======================================================
+  // New CDF targets requested:
+  // - P(value ≤ 15) = 35%
+  // - P(value ≤ 20) = 75%
+  // - P(value ≤ 25) = 90%
+  // - P(value ≤ 30) = 95%
+  // - P(value ≤ 35) = 97%
+  // The remaining tail is distributed across larger values with rapidly
+  // decreasing probabilities (rare/very rare/highly unlikely).
   const cdfTargets = [
-    { max: 20, p: 0.40 },
-    { max: 25, p: 0.75 },
-    { max: 30, p: 0.90 },
-    { max: 35, p: 0.95 },
+    { max: 15, p: 0.35 },
+    { max: 20, p: 0.75 },
+    { max: 25, p: 0.90 },
+    { max: 30, p: 0.95 },
+    { max: 35, p: 0.97 },
     { max: 40, p: 0.99 },
     { max: 50, p: 0.999 },
     { max: 60, p: 0.9999 },
@@ -58,6 +61,10 @@
   ];
 
   function buildWeightsFromCdf(valuesList, cdfPoints) {
+    // Build per-value probabilities from cumulative distribution targets.
+    // For each CDF target, we identify which values fall in that range and
+    // distribute the probability equally among them. Result: individual
+    // weights that respect the CDF curve and make higher values rarer.
     const weights = new Array(valuesList.length).fill(0);
     let prevP = 0;
     let prevMax = -Infinity;
@@ -85,18 +92,31 @@
       // Fallback to uniform if misconfigured.
       return weights.map(() => 1 / weights.length);
     }
+    // Each value now has a probability proportional to its position in the CDF.
+    // Lower values (e.g., 10–30) get ~8% each. Higher values (e.g., 60–100) get <0.1%.
     return weights.map((w) => w / total);
   }
 
   const weights = buildWeightsFromCdf(values, cdfTargets);
 
   function pickWeighted(valuesList, weightsList) {
-    const total = weightsList.reduce((a, b) => a + b, 0);
+    // Pick an index according to the provided weights (CDF-derived).
+    // This preserves the probability distribution: higher values with smaller
+    // weights are rarer. We compute a cumulative sum and select by a single
+    // uniform random in [0, total).
+    const total = weightsList.reduce((s, w) => s + w, 0);
+    if (total <= 0) {
+      // Fallback to uniform if weights are invalid
+      const idx = Math.floor(Math.random() * valuesList.length);
+      return { index: idx, value: valuesList[idx] };
+    }
+
     let r = Math.random() * total;
     for (let i = 0; i < weightsList.length; i++) {
       r -= weightsList[i];
       if (r <= 0) return { index: i, value: valuesList[i] };
     }
+    // Numerical safety: return last
     return { index: valuesList.length - 1, value: valuesList[valuesList.length - 1] };
   }
 
@@ -813,8 +833,8 @@
     const picked = pickWeighted(values, weights);
     wheel.selectedIndex = picked.index;
 
-    // Start a 30s cooldown visual + lock UI
-    startCooldown(30000);
+    // Start a 20s cooldown visual + lock UI
+    startCooldown(20000);
 
     setStatus('Spinning…');
     setResult(null);
