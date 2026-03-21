@@ -37,28 +37,25 @@
   // Values (user-provided set, intentionally NOT in sorted order for the wheel layout)
   const values = [35, 10, 80, 25, 60, 12, 70, 17, 100, 27, 45, 20, 50, 30, 40, 23, 90, 15];
 
-  // Probability Distribution (CDF) — user-specified targets
+  // Probability Distribution (CDF) — updated targets
   // ======================================================
-  // New CDF targets requested:
-  // - P(value ≤ 15) = 35%
-  // - P(value ≤ 20) = 75%
-  // - P(value ≤ 25) = 90%
-  // - P(value ≤ 30) = 95%
-  // - P(value ≤ 35) = 97%
-  // The remaining tail is distributed across larger values with rapidly
-  // decreasing probabilities (rare/very rare/highly unlikely).
+  // Requested pattern:
+  // - P(value ≤ 15) = 90%    (0.9)
+  // - P(value ≤ 20) = 99%    (0.99)
+  // - P(value ≤ 25) = 99.9%  (0.999)
+  // - and so on: each +5 increases the number of 9s by one until capped at 1
   const cdfTargets = [
-    { max: 15, p: 0.35 },
-    { max: 20, p: 0.75 },
-    { max: 25, p: 0.90 },
-    { max: 30, p: 0.95 },
-    { max: 35, p: 0.97 },
-    { max: 40, p: 0.99 },
-    { max: 50, p: 0.999 },
-    { max: 60, p: 0.9999 },
-    { max: 70, p: 0.99999 },
-    { max: 80, p: 0.999999 },
-    { max: 90, p: 0.9999999 },
+    { max: 15, p: 0.90 },
+    { max: 20, p: 0.99 },
+    { max: 25, p: 0.999 },
+    { max: 30, p: 0.9999 },
+    { max: 35, p: 0.99999 },
+    { max: 40, p: 0.999999 },
+    { max: 50, p: 0.9999999 },
+    { max: 60, p: 0.99999999 },
+    { max: 70, p: 0.999999999 },
+    { max: 80, p: 0.9999999999 },
+    { max: 90, p: 0.99999999999 },
     { max: 100, p: 1 },
   ];
 
